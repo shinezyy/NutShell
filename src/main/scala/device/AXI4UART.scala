@@ -22,12 +22,14 @@ import chisel3.util._
 import bus.axi4._
 import utils._
 
-class UARTGetc extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class UARTGetcIO extends Bundle {
     val clk = Input(Clock())
     val getc = Input(Bool())
     val ch = Output(UInt(8.W))
-  })
+}
+
+class UARTGetc extends BlackBox with HasBlackBoxInline {
+  val io = IO(new UARTGetcIO).suggestName("io")
 
   setInline("UARTGetc.v",
     s"""

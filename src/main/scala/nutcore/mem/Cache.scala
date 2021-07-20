@@ -82,9 +82,21 @@ sealed trait HasCacheConst {
   def isSameWord(a1: UInt, a2: UInt) = ((a1 >> 2) === (a2 >> 2))
   def isSetConflict(a1: UInt, a2: UInt) = (a1.asTypeOf(addrBundle).index === a2.asTypeOf(addrBundle).index)
 }
-
 sealed abstract class CacheBundle(implicit cacheConfig: CacheConfig) extends Bundle with HasNutCoreParameter with HasCacheConst
+
+class CacheCommonIO(implicit val cacheConfig: CacheConfig) extends CacheBundle {
+  val in = Flipped(new SimpleBusUC(userBits = userBits, idBits = idBits))
+  val flush = Input(UInt(2.W))
+  val out = new SimpleBusC
+  val mmio = new SimpleBusUC
+  val empty = Output(Bool())
+}
+
 sealed abstract class CacheModule(implicit cacheConfig: CacheConfig) extends Module with HasNutCoreParameter with HasCacheConst with HasNutCoreLog
+
+sealed abstract class CacheTop(implicit cacheConfig: CacheConfig) extends Module with HasNutCoreParameter with HasCacheConst with HasNutCoreLog {
+  val io: CacheCommonIO = IO(new CacheCommonIO)
+}
 
 sealed class MetaBundle(implicit val cacheConfig: CacheConfig) extends CacheBundle {
   val tag = Output(UInt(TagBits.W))
@@ -448,7 +460,11 @@ sealed class CacheStage3(implicit val cacheConfig: CacheConfig) extends CacheMod
   assert(!(metaHitWriteBus.req.valid && metaRefillWriteBus.req.valid))
   assert(!(dataHitWriteBus.req.valid && dataRefillWriteBus.req.valid))
   assert(!(!ro.B && io.flush), "only allow to flush icache")
-  Debug(" metaread idx %x waymask %b metas %x%x:%x %x%x:%x %x%x:%x %x%x:%x %x\n", getMetaIdx(req.addr), io.in.bits.waymask.asUInt, io.in.bits.metas(0).valid, io.in.bits.metas(0).dirty, io.in.bits.metas(0).tag, io.in.bits.metas(1).valid, io.in.bits.metas(1).dirty, io.in.bits.metas(1).tag, io.in.bits.metas(2).valid, io.in.bits.metas(2).dirty, io.in.bits.metas(2).tag, io.in.bits.metas(3).valid, io.in.bits.metas(3).dirty, io.in.bits.metas(3).tag, io.in.bits.datas.asUInt)
+  // Debug(" metaread idx %x waymask %b metas %x%x:%x %x%x:%x %x%x:%x %x%x:%x %x\n",
+  //  getMetaIdx(req.addr), io.in.bits.waymask.asUInt, io.in.bits.metas(0).valid, io.in.bits.metas(0).dirty, io.in.bits.metas(0).tag,
+  //   io.in.bits.metas(1).valid, io.in.bits.metas(1).dirty, io.in.bits.metas(1).tag,
+  //    io.in.bits.metas(2).valid, io.in.bits.metas(2).dirty, io.in.bits.metas(2).tag,
+  //     io.in.bits.metas(3).valid, io.in.bits.metas(3).dirty, io.in.bits.metas(3).tag, io.in.bits.datas.asUInt)
   Debug(io.metaWriteBus.req.fire(), "%d: [" + cacheName + " S3]: metawrite idx %x wmask %b meta %x%x:%x\n", GTimer(), io.metaWriteBus.req.bits.setIdx, io.metaWriteBus.req.bits.waymask.get, io.metaWriteBus.req.bits.data.valid, io.metaWriteBus.req.bits.data.dirty, io.metaWriteBus.req.bits.data.tag)
   Debug(" in.ready = %d, in.valid = %d, hit = %x, state = %d, addr = %x cmd:%d probe:%d isFinish:%d\n", io.in.ready, io.in.valid, hit, state, req.addr, req.cmd, probe, io.isFinish)
   Debug(" out.valid:%d rdata:%x cmd:%d user:%x id:%x \n", io.out.valid, io.out.bits.rdata, io.out.bits.cmd, io.out.bits.user.getOrElse(0.U), io.out.bits.id.getOrElse(0.U))
@@ -462,21 +478,15 @@ sealed class CacheStage3(implicit val cacheConfig: CacheConfig) extends CacheMod
   Debug((state === s_memReadResp) && io.mem.resp.fire(), "[COUTR] cnt %x data %x tag %x idx %x waymask %b \n", readBeatCnt.value, io.mem.resp.bits.rdata, addr.tag, getMetaIdx(req.addr), io.in.bits.waymask)
 }
 
-class Cache(implicit val cacheConfig: CacheConfig) extends CacheModule {
-  val io = IO(new Bundle {
-    val in = Flipped(new SimpleBusUC(userBits = userBits, idBits = idBits))
-    val flush = Input(UInt(2.W))
-    val out = new SimpleBusC
-    val mmio = new SimpleBusUC
-    val empty = Output(Bool())
-  })
-
+class Cache(implicit val cacheConfig: CacheConfig) extends CacheTop {
   // cpu pipeline
   val s1 = Module(new CacheStage1)
   val s2 = Module(new CacheStage2)
   val s3 = Module(new CacheStage3)
-  val metaArray = Module(new SRAMTemplateWithArbiter(nRead = 1, new MetaBundle, set = Sets, way = Ways, shouldReset = true))
-  val dataArray = Module(new SRAMTemplateWithArbiter(nRead = 2, new DataBundle, set = Sets * LineBeats, way = Ways))
+  val metaArray = Module(new SRAMTemplateWithArbiter(nRead = 1, new MetaBundle, set = Sets, way = Ways, shouldReset = true,
+  info = s"${cacheConfig.name}_meta"))
+  val dataArray = Module(new SRAMTemplateWithArbiter(nRead = 2, new DataBundle, set = Sets * LineBeats, way = Ways,
+  info = s"${cacheConfig.name}_data"))
 
   if (cacheName == "icache") {
     // flush icache when executing fence.i
@@ -546,14 +556,7 @@ class Cache(implicit val cacheConfig: CacheConfig) extends CacheModule {
   //s3.io.mem.dump(cacheName + ".mem")
 }
 
-class Cache_fake(implicit val cacheConfig: CacheConfig) extends CacheModule {
-  val io = IO(new Bundle {
-    val in = Flipped(new SimpleBusUC(userBits = userBits))
-    val flush = Input(UInt(2.W))
-    val out = new SimpleBusC
-    val mmio = new SimpleBusUC
-    val empty = Output(Bool())
-  })
+class Cache_fake(implicit val cacheConfig: CacheConfig) extends CacheTop {
   
   val s_idle :: s_memReq :: s_memResp :: s_mmioReq :: s_mmioResp :: s_wait_resp :: Nil = Enum(6)
   val state = RegInit(s_idle)
@@ -633,14 +636,7 @@ class Cache_fake(implicit val cacheConfig: CacheConfig) extends CacheModule {
   Debug(io.in.resp.fire(), p"in.resp: ${io.in.resp.bits}\n")
 }
 
-class Cache_dummy(implicit val cacheConfig: CacheConfig) extends CacheModule {
-  val io = IO(new Bundle {
-    val in = Flipped(new SimpleBusUC(userBits = userBits))
-    val flush = Input(UInt(2.W))
-    val out = new SimpleBusC
-    val mmio = new SimpleBusUC
-    val empty = Output(Bool())
-  })
+class Cache_dummy(implicit val cacheConfig: CacheConfig) extends CacheTop {
 
   val needFlush = RegInit(false.B)
   when (io.flush(0)) {

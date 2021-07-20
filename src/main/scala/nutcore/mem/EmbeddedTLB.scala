@@ -26,13 +26,15 @@ import utils._
 import top.Settings
 
 
-class EmbeddedTLBMD(implicit val tlbConfig: TLBConfig) extends TlbModule {
-  val io = IO(new Bundle {
+class EmbeddedTLBMDIO(implicit val tlbConfig: TLBConfig) extends TlbBundle {
     val tlbmd = Output(Vec(Ways, UInt(tlbLen.W)))
     val write = Flipped(new TLBMDWriteBundle(IndexBits = IndexBits, Ways = Ways, tlbLen = tlbLen))
     val rindex = Input(UInt(IndexBits.W))
     val ready = Output(Bool())
-  })
+}
+
+class EmbeddedTLBMD(implicit val tlbConfig: TLBConfig) extends TlbModule {
+  val io: EmbeddedTLBMDIO = IO(new EmbeddedTLBMDIO)
 
   //val tlbmd = Reg(Vec(Ways, UInt(tlbLen.W)))
   val tlbmd = Mem(Sets, Vec(Ways, UInt(tlbLen.W)))
@@ -61,18 +63,21 @@ class EmbeddedTLBMD(implicit val tlbConfig: TLBConfig) extends TlbModule {
   def wready() = !resetState
 }
 
-class EmbeddedTLB(implicit val tlbConfig: TLBConfig) extends TlbModule{
-  val io = IO(new Bundle {
-    val in = Flipped(new SimpleBusUC(userBits = userBits, addrBits = VAddrBits))
-    val out = new SimpleBusUC(userBits = userBits)
+class EmbeddedTLBIO(implicit val tlbConfig: TLBConfig) extends TlbBundle {
+  val in = Flipped(new SimpleBusUC(userBits = tlbConfig.userBits, addrBits = VAddrBits))
+  val out = new SimpleBusUC(userBits = tlbConfig.userBits)
+  val mem = new SimpleBusUC()
+  val flush = Input(Bool()) 
+  val csrMMU = new MMUIO
+  val cacheEmpty = Input(Bool())
+  val ipf = Output(Bool())
+}
 
-    val mem = new SimpleBusUC()
-    val flush = Input(Bool()) 
-    val csrMMU = new MMUIO
-    val cacheEmpty = Input(Bool())
-    val ipf = Output(Bool())
-  })
+abstract class EmbeddedTLBCommon (implicit tlbConfig: TLBConfig) extends TlbModule {
+  val io: EmbeddedTLBIO = IO(new EmbeddedTLBIO)
+}
 
+class EmbeddedTLB(implicit val tlbConfig: TLBConfig) extends EmbeddedTLBCommon{
   val satp = WireInit(0.U(XLEN.W))
   BoringUtils.addSink(satp, "CSRSATP")
 
@@ -403,16 +408,7 @@ class EmbeddedTLBEmpty(implicit val tlbConfig: TLBConfig) extends TlbModule {
   io.out <> io.in
 }
 
-class EmbeddedTLB_fake(implicit val tlbConfig: TLBConfig) extends TlbModule{
-  val io = IO(new Bundle {
-    val in = Flipped(new SimpleBusUC(userBits = userBits, addrBits = VAddrBits))
-    val out = new SimpleBusUC(userBits = userBits)
-    val flush = Input(Bool()) 
-    val csrMMU = new MMUIO
-    val cacheEmpty = Input(Bool())
-    val ipf = Output(Bool())
-  })
-  
+class EmbeddedTLB_fake(implicit val tlbConfig: TLBConfig) extends EmbeddedTLBCommon{
   io.out <> io.in
   io.csrMMU.loadPF := false.B
   io.csrMMU.storePF := false.B
@@ -424,14 +420,14 @@ class EmbeddedTLB_fake(implicit val tlbConfig: TLBConfig) extends TlbModule{
 object EmbeddedTLB {
   def apply(in: SimpleBusUC, mem: SimpleBusUC, flush: Bool, csrMMU: MMUIO, enable: Boolean = true)(implicit tlbConfig: TLBConfig) = {
     if (enable) {
-      val tlb = Module(new EmbeddedTLB)
+      val tlb: EmbeddedTLBCommon = Module(new EmbeddedTLB)
       tlb.io.in <> in
       tlb.io.mem <> mem
       tlb.io.flush := flush
       tlb.io.csrMMU <> csrMMU
       tlb
     } else {
-      val tlb = Module(new EmbeddedTLB_fake)
+      val tlb: EmbeddedTLBCommon = Module(new EmbeddedTLB_fake)
       tlb.io.in <> in
       tlb.io.flush := flush
       tlb.io.csrMMU <> csrMMU

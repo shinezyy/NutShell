@@ -1,4 +1,7 @@
 import mill._, scalalib._
+import os.Path
+import $file.firrtl.build
+import $file.chisel3.build
 
 /**
  * Scala 2.12 module that is source-compatible with 2.11.
@@ -10,15 +13,21 @@ trait HasXsource211 extends ScalaModule {
     super.scalacOptions() ++ Seq(
       "-deprecation",
       "-unchecked",
-      "-Xsource:2.11"
     )
   }
 }
 
+object firrtlXS extends firrtl.build.firrtlCrossModule("2.12.13") {
+  override def millSourcePath = os.pwd / "firrtl"
+}
+
+object chiselSrc extends chisel3.build.chisel3CrossModule("2.12.13") {
+  override def millSourcePath = os.pwd / "chisel3"
+  def firrtlModule: Option[PublishModule] = Some(firrtlXS)
+}
+
 trait HasChisel3 extends ScalaModule {
-  override def ivyDeps = Agg(
-    ivy"edu.berkeley.cs::chisel3:3.3.2"
- )
+  override def moduleDeps = super.moduleDeps ++ Seq(chiselSrc)
 }
 
 trait HasChiselTests extends CrossSbtModule  {
@@ -30,12 +39,13 @@ trait HasChiselTests extends CrossSbtModule  {
 
 trait HasMacroParadise extends ScalaModule {
   // Enable macro paradise for @chiselName et al
-  val macroPlugins = Agg(ivy"org.scalamacros:::paradise:2.1.0")
+  val macroPlugins = Agg(ivy"org.scalamacros:::paradise:2.1.1")
   def scalacPluginIvyDeps = macroPlugins
   def compileIvyDeps = macroPlugins
 }
 
 object chiselModule extends CrossSbtModule with HasChisel3 with HasChiselTests with HasXsource211 with HasMacroParadise {
-  def crossScalaVersion = "2.11.12"
+  override def scalaVersion = "2.12.13"
+  override def crossScalaVersion = "2.12.13"
 }
 

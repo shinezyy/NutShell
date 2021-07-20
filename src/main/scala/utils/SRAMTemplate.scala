@@ -18,6 +18,8 @@ package utils
 
 import chisel3._
 import chisel3.util._
+import chisel3.util.experimental.loadMemoryFromFileInline
+
 
 class SRAMBundleA(val set: Int) extends Bundle {
   val setIdx = Output(UInt(log2Up(set).W))
@@ -66,7 +68,8 @@ class SRAMWriteBus[T <: Data](private val gen: T, val set: Int, val way: Int = 1
 }
 
 class SRAMTemplate[T <: Data](gen: T, set: Int, way: Int = 1,
-  shouldReset: Boolean = false, holdRead: Boolean = false, singlePort: Boolean = false) extends Module {
+  shouldReset: Boolean = false, holdRead: Boolean = false, singlePort: Boolean = false,
+  info: String = "") extends Module {
   val io = IO(new Bundle {
     val r = Flipped(new SRAMReadBus(gen, set, way))
     val w = Flipped(new SRAMWriteBus(gen, set, way))
@@ -74,6 +77,9 @@ class SRAMTemplate[T <: Data](gen: T, set: Int, way: Int = 1,
 
   val wordType = UInt(gen.getWidth.W)
   val array = SyncReadMem(set, Vec(way, wordType))
+  println(info)
+  val arrayx = SyncReadMem(set, wordType)
+  loadMemoryFromFileInline(arrayx, "init", info=info)
   val (resetState, resetSet) = (WireInit(false.B), WireInit(0.U))
 
   if (shouldReset) {
@@ -93,10 +99,14 @@ class SRAMTemplate[T <: Data](gen: T, set: Int, way: Int = 1,
   val waymask = Mux(resetState, Fill(way, "b1".U), io.w.req.bits.waymask.getOrElse("b1".U))
   val wdata = VecInit(Seq.fill(way)(wdataword))
   when (wen) { array.write(setIdx, wdata, waymask.asBools) }
+  when (wen && waymask === "b0001".U) { array.write(setIdx, wdata, waymask.asBools) }
 
   val rdata = (if (holdRead) ReadAndHold(array, io.r.req.bits.setIdx, realRen)
                else array.read(io.r.req.bits.setIdx, realRen)).map(_.asTypeOf(gen))
-  io.r.resp.data := VecInit(rdata)
+  val rdatax = (if (holdRead) ReadAndHold(arrayx, io.r.req.bits.setIdx, realRen)
+               else arrayx.read(io.r.req.bits.setIdx, realRen)).asTypeOf(gen)
+
+  io.r.resp.data := Mux(waymask === "b0001".U, VecInit(Seq.fill(way)(rdatax)), VecInit(rdata))
 
   io.r.req.ready := !resetState && (if (singlePort) !wen else true.B)
   io.w.req.ready := true.B
@@ -111,14 +121,16 @@ class SRAMTemplate[T <: Data](gen: T, set: Int, way: Int = 1,
   }
 }
 
+
 class SRAMTemplateWithArbiter[T <: Data](nRead: Int, gen: T, set: Int, way: Int = 1,
-  shouldReset: Boolean = false) extends Module {
+  shouldReset: Boolean = false,
+  info: String = "") extends Module {
   val io = IO(new Bundle {
     val r = Flipped(Vec(nRead, new SRAMReadBus(gen, set, way)))
     val w = Flipped(new SRAMWriteBus(gen, set, way))
   })
 
-  val ram = Module(new SRAMTemplate(gen, set, way, shouldReset, holdRead = false, singlePort = true))
+  val ram = Module(new SRAMTemplate(gen, set, way, shouldReset, holdRead = false, singlePort = true, info = info))
   ram.io.w <> io.w
 
   val readArb = Module(new Arbiter(chiselTypeOf(io.r(0).req.bits), nRead))

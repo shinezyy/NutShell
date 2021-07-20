@@ -24,16 +24,18 @@ import nutcore.HasNutCoreParameter
 import bus.axi4._
 import utils._
 
+class RAMHelperIO extends Bundle with HasNutCoreParameter {
+  val clk = Input(Clock())
+  val rIdx = Input(UInt(DataBits.W))
+  val rdata = Output(UInt(DataBits.W))
+  val wIdx = Input(UInt(DataBits.W))
+  val wdata = Input(UInt(DataBits.W))
+  val wmask = Input(UInt(DataBits.W))
+  val wen = Input(Bool())
+}
+
 class RAMHelper(memByte: Int) extends BlackBox with HasNutCoreParameter {
-  val io = IO(new Bundle {
-    val clk = Input(Clock())
-    val rIdx = Input(UInt(DataBits.W))
-    val rdata = Output(UInt(DataBits.W))
-    val wIdx = Input(UInt(DataBits.W))
-    val wdata = Input(UInt(DataBits.W))
-    val wmask = Input(UInt(DataBits.W))
-    val wen = Input(Bool())
-  })
+  val io = IO(new RAMHelperIO).suggestName("io")
 }
 
 class AXI4RAM[T <: AXI4Lite](_type: T = new AXI4, memByte: Int,

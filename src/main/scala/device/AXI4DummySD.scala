@@ -32,14 +32,16 @@ trait HasSDConst {
   def C_SIZE = NrBlock / MULT - 1
 }
 
-class SDHelper extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class SDHelperIO extends Bundle {
     val clk = Input(Clock())
     val ren = Input(Bool())
     val data = Output(UInt(32.W))
     val setAddr = Input(Bool())
     val addr = Input(UInt(32.W))
-  })
+}
+
+class SDHelper extends BlackBox with HasBlackBoxInline {
+  val io = IO(new SDHelperIO).suggestName("io")
 
   setInline("SDHelper.v",
     s"""

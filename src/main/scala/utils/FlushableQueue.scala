@@ -19,16 +19,28 @@ package utils
 import chisel3._
 import chisel3.util._
 import chisel3.internal.naming._  // can't use chisel3_ version because of compile order
+import chisel3.experimental.{DataMirror, requireIsChiselType}
 
-class FlushableQueueIO[T <: Data](private val gen: T, entries: Int) extends QueueIO(gen, entries) {
+class FlushableQueueIO[T <: Data](gen: T, entries: Int) extends QueueIO[T](gen, entries) {
   val flush = Input(Bool())
+  override def cloneType: this.type = new FlushableQueueIO(gen, entries).asInstanceOf[this.type]
 }
 
 class FlushableQueue[T <: Data](gen: T, val entries: Int,
   pipe: Boolean = false, flow: Boolean = false) extends Module() {
-  val genType = gen
 
-  val io = IO(new FlushableQueueIO(genType, entries))
+  val genType = if (compileOptions.declaredTypeMustBeUnbound) {
+    requireIsChiselType(gen)
+    gen
+  } else {
+    if (DataMirror.internal.isSynthesizable(gen)) {
+      chiselTypeOf(gen)
+    } else {
+      gen
+    }
+  }
+
+  val io: FlushableQueueIO[T] = IO(new FlushableQueueIO(genType, entries))
 
   private val ram = Mem(entries, genType)
   private val enq_ptr = Counter(entries)
@@ -101,7 +113,7 @@ object FlushableQueue {
       deq
     } else {
       require(entries > 0)
-      val q = Module(new FlushableQueue(chiselTypeOf(enq.bits), entries, pipe, flow))
+      val q: FlushableQueue[T] = Module(new FlushableQueue(chiselTypeOf(enq.bits), entries, pipe, flow))
       q.io.enq.valid := enq.valid // not using <> so that override is allowed
       q.io.enq.bits := enq.bits
       q.io.flush := flush

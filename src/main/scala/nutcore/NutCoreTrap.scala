@@ -29,14 +29,16 @@ object NutCoreTrap extends HasInstrType {
   val table = Array(TRAP -> List(InstrI, FuType.csr, CSROpType.set))
 }
 
+class MonitorIO extends Bundle {
+  val clk = Input(Clock())
+  val reset = Input(Bool())
+  val isNutCoreTrap = Input(Bool())
+  val trapCode = Input(UInt(32.W))
+  val trapPC = Input(UInt(64.W))
+  val cycleCnt = Input(UInt(64.W))
+  val instrCnt = Input(UInt(64.W))
+}
+
 class Monitor extends BlackBox {
-  val io = IO(new Bundle {
-    val clk = Input(Clock())
-    val reset = Input(Bool())
-    val isNutCoreTrap = Input(Bool())
-    val trapCode = Input(UInt(32.W))
-    val trapPC = Input(UInt(64.W))
-    val cycleCnt = Input(UInt(64.W))
-    val instrCnt = Input(UInt(64.W))
-  })
+  val io: MonitorIO = IO(new MonitorIO).suggestName("io")
 }

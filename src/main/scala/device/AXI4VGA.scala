@@ -83,13 +83,15 @@ class VGACtrl extends AXI4SlaveModule(new AXI4Lite, new VGACtrlBundle) with HasV
   io.extra.get.sync := sync
 }
 
-class FBHelper extends BlackBox with HasBlackBoxInline {
-  val io = IO(new Bundle {
+class FBHelperIO extends Bundle {
     val clk = Input(Clock())
     val valid = Input(Bool())
     val pixel = Input(UInt(32.W))
     val sync = Input(Bool())
-  })
+}
+
+class FBHelper extends BlackBox with HasBlackBoxInline {
+  val io = IO(new FBHelperIO).suggestName("io")
 
   setInline("FBHelper.v",
     s"""
