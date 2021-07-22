@@ -47,7 +47,8 @@ SIM_TOP = NutShellSimTop
 SIM_TOP_V = $(BUILD_DIR)/$(SIM_TOP).v
 $(SIM_TOP_V): $(SCALA_FILE) $(TEST_FILE)
 	mkdir -p $(@D)
-	mill chiselModule.test.runMain $(SIMTOP) -td $(@D) --output-file $(@F) --infer-rw BOARD=sim CORE=$(CORE) --full-stacktrace
+	mill chiselModule.test.runMain $(SIMTOP) -td $(@D) --output-file $(@F) --infer-rw BOARD=sim CORE=$(CORE) \
+		--full-stacktrace -ll info
 
 
 EMU_CSRC_DIR = $(abspath ./src/test/csrc)

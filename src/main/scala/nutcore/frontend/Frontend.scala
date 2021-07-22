@@ -33,7 +33,15 @@ class FrontEndIO extends Bundle with HasNutCoreConst {
 }
 
 abstract class FrontEndCommon extends NutCoreModule {
-  val io: FrontEndIO = IO(new FrontEndIO)
+  // val io: FrontEndIO = IO(new FrontEndIO)
+  val io = IO(new Bundle{
+    val out = Vec(2, Decoupled(new DecodeIO))
+    val imem = new SimpleBusUC(userBits = ICacheUserBundleWidth, addrBits = VAddrBits)
+    val flushVec = Output(UInt(4.W))
+    val bpFlush = Output(Bool())
+    val ipf = Input(Bool())
+    val redirect = Flipped(new RedirectIO)
+  })
 }
 
 class Frontend_ooo(implicit val p: NutCoreConfig) extends FrontEndCommon {

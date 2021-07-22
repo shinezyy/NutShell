@@ -19,6 +19,7 @@ package utils
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.loadMemoryFromFileInline
+import scala.util.Random
 
 
 class SRAMBundleA(val set: Int) extends Bundle {
@@ -79,7 +80,7 @@ class SRAMTemplate[T <: Data](gen: T, set: Int, way: Int = 1,
   val array = SyncReadMem(set, Vec(way, wordType))
   println(info)
   val arrayx = SyncReadMem(set, wordType)
-  loadMemoryFromFileInline(arrayx, "init", info=info)
+  loadMemoryFromFileInline(arrayx, s"init_${scala.util.Random.alphanumeric.take(10).mkString}.txt")
   val (resetState, resetSet) = (WireInit(false.B), WireInit(0.U))
 
   if (shouldReset) {
